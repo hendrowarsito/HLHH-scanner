@@ -13,6 +13,7 @@ Aplikasi Streamlit untuk menyaring saham & crypto yang membentuk struktur uptren
 |---|---|
 | `app.py` | UI Streamlit |
 | `hhhl_detector.py` | Mesin deteksi swing + segmentasi struktur |
+| `pattern_detector.py` | Pola geometris (triangle/wedge/channel) — eksperimen, default mati |
 | `data_sources.py` | Konektor yfinance & OKX |
 | `tickers.xlsx` | **Daftar instrumen — kamu isi sendiri** |
 | `requirements.txt` | Dependensi |
@@ -114,6 +115,23 @@ Di tampilan **Semua**, klik satu baris → chart instrumen itu langsung terbuka 
 | **LH warn** | Lower High di segmen aktif — momentum melemah, belum batal |
 | **Patah** | Berapa kali struktur pernah dilanggar sepanjang lookback |
 | **Threshold %** | Ambang ZigZag yang dihitung otomatis dari ATR instrumen itu |
+
+---
+
+## 📐 Pola geometris (eksperimen — default MATI)
+
+Sidebar → **📐 Pola geometris**. Menyalakannya menggambar dua garis singgung pada chart
+di tab Detail dan menamai bentuknya: *symmetrical / ascending / descending triangle,
+rising / falling wedge, channel, rectangle, broadening*.
+
+**Anotasi visual saja** — tidak masuk tabel, tidak masuk CSV, tidak memengaruhi Grade.
+
+🔴 Angka yang wajib diingat: pada **random walk murni**, syarat 2 sentuhan menamai pola
+di **99%** kasus, syarat 3 sentuhan di **10–15%** kasus. Artinya munculnya sebuah pola
+**bukan bukti apa pun** — itu base rate-nya. Jangan turunkan syarat sentuhan ke 2
+kecuali paham konsekuensinya.
+
+Analisa lengkap + protokol validasi: [`docs/ANALISA_POLA_GEOMETRIS.md`](docs/ANALISA_POLA_GEOMETRIS.md)
 
 ---
 

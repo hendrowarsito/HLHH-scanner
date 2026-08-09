@@ -177,6 +177,18 @@ with st.sidebar:
              "meski segmen aktifnya sudah sah kembali.")
 
     st.divider()
+    with st.expander("📐 Pola geometris (eksperimen)"):
+        st.caption("Menggambar dua garis singgung pada chart di tab Detail. "
+                   "Anotasi visual saja — tidak memengaruhi skor maupun kelolosan.")
+        pola_on = st.checkbox("Gambar pola di chart Detail", value=False)
+        pola_touches = st.slider(
+            "Minimal sentuhan per garis", 2, 4, 3,
+            help="3 = aturan klasik. Pada 2, hampir semua data — termasuk "
+                 "random walk murni — akan dinamai pola.")
+        st.caption("⚠️ Baseline: pada random walk murni, ~10–15% tetap dinamai "
+                   "pola pada syarat 3 sentuhan. Munculnya pola bukan bukti apa pun.")
+
+    st.divider()
     run = st.button("🔍 Jalankan Scan", type="primary", use_container_width=True)
 
     with st.expander("🔎 Cari kode OKX"):
@@ -408,6 +420,7 @@ else:
             m3.metric("Invalidasi", r.invalidation_level or "—")
             m4.metric("Threshold", f"{r.threshold_pct}%")
 
+            pola = None
             try:
                 import plotly.graph_objects as go
                 fig = go.Figure()
@@ -458,6 +471,26 @@ else:
                                         line=dict(color="rgba(255,255,255,0.85)", width=1)),
                             hovertemplate=f"{label}<br>%{{x}}<br>%{{y:.6g}}<extra></extra>"))
 
+                # 3b. pola geometris (opsional, anotasi visual saja)
+                if pola_on:
+                    try:
+                        from pattern_detector import detect_pattern
+                        pola = detect_pattern(r.swings, highs, lows,
+                                              min_touches=int(pola_touches))
+                    except Exception as e:
+                        st.caption(f"Deteksi pola gagal: {e}")
+
+                if pola and pola.upper and pola.lower:
+                    a, b = pola.start_idx, min(pola.end_idx, len(dates) - 1)
+                    label = pola.name if pola.name != "-" else "Garis batas (belum dinamai)"
+                    for ln, nm in ((pola.upper, label), (pola.lower, None)):
+                        fig.add_trace(go.Scatter(
+                            x=[dates[a], dates[b]], y=[ln.at(a), ln.at(b)],
+                            mode="lines", name=nm or label,
+                            legendgroup="pola", showlegend=nm is not None,
+                            line=dict(color="#a142f4", width=1.8, dash="dash"),
+                            hovertemplate=f"{label}<extra></extra>"))
+
                 # 4. level invalidasi + zona di bawahnya
                 inval = r.invalidation_level
                 if inval:
@@ -505,6 +538,19 @@ else:
             except Exception as e:
                 st.warning(f"Chart tidak tersedia: {e}")
                 st.line_chart(pd.DataFrame({"Close": closes}, index=dates))
+
+            if pola_on:
+                if pola is None:
+                    st.caption("📐 Pola: tidak ada bentuk yang memenuhi syarat "
+                               "(swing terlalu sedikit atau rentang terlalu pendek).")
+                else:
+                    st.caption(
+                        f"📐 **{pola.name}** · sentuhan {pola.upper.touches} atas / "
+                        f"{pola.lower.touches} bawah · lebar {pola.width_ratio:g}× · "
+                        f"kualitas {pola.quality:g} · {pola.bars} bar"
+                        + (f" · apex ~bar {pola.apex_idx}" if pola.apex_idx else ""))
+                    for n in pola.notes:
+                        st.caption(f"　↳ {n}")
 
             st.write("**Seluruh swing:**", " → ".join(str(s) for s in r.swings))
             st.write("**Segmen aktif:**", " → ".join(str(s) for s in r.active_segment))

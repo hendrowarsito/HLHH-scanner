@@ -138,6 +138,19 @@ Prototipe ini sudah memakai `log(price)` dan itu sebaiknya dipertahankan.
    *selalu* menghasilkan "pola". Tanpa syarat minimum sentuhan, fitur ini akan
    memberi nama pola pada apa saja, termasuk noise. Wajib ada gerbang: minimal 3
    sentuhan per garis, minimal ~15–20 bar durasi, dan residu maksimum.
+
+   Ini terukur. Pada **200 random walk murni** (90 bar, tanpa struktur apa pun):
+
+   | Syarat sentuhan | Dinamai pola |
+   |---|---|
+   | 2 sentuhan | **199 / 200 (99%)** |
+   | 3 sentuhan | **21–30 / 200 (10–15%)** |
+
+   Dengan syarat 2 sentuhan, fitur ini pada praktiknya menamai *segalanya* — tidak
+   ada nilai informasinya. Karena itu default di aplikasi adalah 3 sentuhan.
+   Dan angka 10–15% itu adalah **base rate**-nya: kalau sebuah pola muncul, itu
+   belum membedakan apa pun dari kebetulan. Pola paling sering muncul palsu adalah
+   *Broadening formation* (~40% dari deteksi palsu).
 3. **Kelas pola tidak saling eksklusif.** Rising wedge dan ascending channel hanya
    dibedakan oleh seberapa cepat menyempit; batas 0,75 itu pilihan, bukan hukum alam.
    Angka batas harus dikalibrasi, dan sampai dikalibrasi, hasilnya adalah dugaan.
@@ -203,11 +216,23 @@ keputusan apa pun:
 
 ## 8. Rekomendasi bertahap
 
-| Fase | Isi | Risiko |
-|---|---|---|
-| **1. Visual saja** | Gambar dua garis di tab Detail, tanpa nama pola, tanpa skor | Rendah — hanya membantu mata |
-| **2. Penamaan** | Tambah kolom Pola + kualitas, setelah ambang dikalibrasi | Sedang — nama yang salah menyesatkan |
-| **3. Skoring** | Pola ikut memengaruhi Grade | **Tinggi — jangan sebelum §7 dijalankan** |
+| Fase | Isi | Risiko | Status |
+|---|---|---|---|
+| **1. Visual saja** | Gambar dua garis di tab Detail, tanpa skor | Rendah — hanya membantu mata | ✅ **Terpasang** (`pattern_detector.py`, toggle di sidebar, default mati) |
+| **2. Penamaan di tabel** | Kolom Pola + kualitas di hasil scan, setelah ambang dikalibrasi | Sedang — nama yang salah menyesatkan | Belum |
+| **3. Skoring** | Pola ikut memengaruhi Grade | **Tinggi — jangan sebelum §7 dijalankan** | Belum |
+
+### Yang sudah terpasang (Fase 1)
+
+- `pattern_detector.py` — `fit_tangent()`, `classify()`, `detect_pattern()`, plus uji
+  mandiri (`python pattern_detector.py`): **69/72** pada pola sintetis, dan **0/20**
+  random walk dinamai pola pada syarat 3 sentuhan.
+- Sidebar → **📐 Pola geometris (eksperimen)**, default **mati**. Menyalakannya hanya
+  menggambar dua garis putus-putus di chart Detail + satu baris keterangan
+  (nama, sentuhan, rasio lebar, kualitas, apex).
+- Tidak menyentuh `hhhl_detector.py`, tidak masuk tabel, tidak masuk CSV, tidak
+  memengaruhi Grade maupun kelolosan. Mematikan toggle mengembalikan aplikasi persis
+  seperti sebelumnya.
 
 Fase 1 sudah memberi sebagian besar manfaatnya: mata jauh lebih cepat menangkap struktur
 kalau garisnya sudah tergambar, dan tidak ada klaim yang bisa salah. Saran saya berhenti
