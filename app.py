@@ -292,8 +292,11 @@ else:
             sel = st.selectbox("Pilih instrumen", opts)
             entry = store[sel]
             d, r = entry["data"], entry["result"]
-            closes = d["close"][-st.session_state["params"]["lookback"]:]
-            dates = d["dates"][-st.session_state["params"]["lookback"]:]
+            lb = st.session_state["params"]["lookback"]
+            closes = d["close"][-lb:]
+            highs = d["high"][-lb:]
+            lows = d["low"][-lb:]
+            dates = d["dates"][-lb:]
 
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Grade", r.grade, f"skor {r.score}")
@@ -304,26 +307,96 @@ else:
             try:
                 import plotly.graph_objects as go
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=dates, y=closes, mode="lines",
-                                         name="Close", line=dict(color="#5f6368", width=1)))
-                seg = r.active_segment
+
+                # 1. bayangan rentang high–low sebagai konteks volatilitas
+                fig.add_trace(go.Scatter(
+                    x=dates, y=highs, mode="lines", name="Rentang H–L",
+                    line=dict(width=0), hoverinfo="skip",
+                    legendgroup="band", showlegend=False))
+                fig.add_trace(go.Scatter(
+                    x=dates, y=lows, mode="lines", name="Rentang H–L",
+                    line=dict(width=0), fill="tonexty",
+                    fillcolor="rgba(26,115,232,0.10)", hoverinfo="skip",
+                    legendgroup="band"))
+
+                # 2. garis harga penutupan
+                fig.add_trace(go.Scatter(
+                    x=dates, y=closes, mode="lines", name="Close",
+                    line=dict(color="#8a8f98", width=1.4, shape="spline",
+                              smoothing=0.4),
+                    hovertemplate="%{x}<br>Close %{y:.6g}<extra></extra>"))
+
+                # 3. segmen struktur aktif + penanda swing
+                seg = [s for s in r.active_segment if s.idx < len(dates)]
                 if seg:
                     fig.add_trace(go.Scatter(
-                        x=[dates[s.idx] for s in seg if s.idx < len(dates)],
-                        y=[s.price for s in seg if s.idx < len(dates)],
-                        mode="lines+markers+text",
-                        text=[f"{s.kind}{'*' if not s.confirmed else ''}" for s in seg
-                              if s.idx < len(dates)],
-                        textposition="top center",
-                        name="Segmen aktif",
-                        line=dict(color="#1a73e8", width=2)))
-                if r.invalidation_level:
-                    fig.add_hline(y=r.invalidation_level, line_dash="dash",
-                                  line_color="#c5221f",
-                                  annotation_text=f"Invalidasi {r.invalidation_level}")
-                fig.update_layout(height=440, margin=dict(l=10, r=10, t=30, b=10),
-                                  title=f"{sel} — {st.session_state['params']['interval']}")
-                st.plotly_chart(fig, use_container_width=True)
+                        x=[dates[s.idx] for s in seg],
+                        y=[s.price for s in seg],
+                        mode="lines", name="Segmen aktif",
+                        line=dict(color="#1a73e8", width=2.6),
+                        hoverinfo="skip"))
+
+                    for kind, label, color, symbol, pos in (
+                        ("H", "Swing High", "#0b8043", "triangle-up", "top center"),
+                        ("L", "Swing Low", "#c5221f", "triangle-down", "bottom center"),
+                    ):
+                        pts = [s for s in seg if s.kind == kind]
+                        if not pts:
+                            continue
+                        fig.add_trace(go.Scatter(
+                            x=[dates[s.idx] for s in pts],
+                            y=[s.price for s in pts],
+                            mode="markers+text", name=label,
+                            text=[f"{s.kind}{'' if s.confirmed else '*'}" for s in pts],
+                            textposition=pos,
+                            textfont=dict(size=11, color=color),
+                            marker=dict(color=color, size=9, symbol=symbol,
+                                        line=dict(color="rgba(255,255,255,0.85)", width=1)),
+                            hovertemplate=f"{label}<br>%{{x}}<br>%{{y:.6g}}<extra></extra>"))
+
+                # 4. level invalidasi + zona di bawahnya
+                inval = r.invalidation_level
+                if inval:
+                    floor = min(min(lows), inval)
+                    pad = (max(highs) - floor) * 0.04 or inval * 0.01
+                    fig.add_hrect(y0=floor - pad, y1=inval,
+                                  fillcolor="rgba(197,34,31,0.06)",
+                                  line_width=0, layer="below")
+                    fig.add_hline(y=inval, line_dash="dot", line_width=1.6,
+                                  line_color="#c5221f")
+                    fig.add_annotation(
+                        xref="paper", x=0.005, y=inval, yanchor="bottom",
+                        text=f"Invalidasi {inval:g}", showarrow=False,
+                        font=dict(size=11, color="#c5221f"),
+                        bgcolor="rgba(255,255,255,0.75)", borderpad=2)
+
+                fig.update_layout(
+                    height=460,
+                    margin=dict(l=0, r=8, t=52, b=78),
+                    title=dict(
+                        text=f"<b>{sel}</b>  ·  {st.session_state['params']['interval']}"
+                             f"  ·  grade {r.grade}",
+                        x=0, xanchor="left", font=dict(size=15)),
+                    hovermode="x unified",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    legend=dict(
+                        orientation="h", yanchor="top", y=-0.16,
+                        xanchor="left", x=0,
+                        bgcolor="rgba(0,0,0,0)", borderwidth=0,
+                        font=dict(size=11), itemsizing="constant"),
+                )
+                fig.update_xaxes(showgrid=False, showline=True,
+                                 linecolor="rgba(128,134,139,0.35)",
+                                 ticks="outside", tickcolor="rgba(128,134,139,0.35)",
+                                 nticks=6)
+                fig.update_yaxes(showgrid=True, gridcolor="rgba(128,134,139,0.18)",
+                                 zeroline=False, side="right", nticks=6)
+
+                st.plotly_chart(
+                    fig, use_container_width=True,
+                    config={"displayModeBar": False, "responsive": True,
+                            "scrollZoom": False})
             except Exception as e:
                 st.warning(f"Chart tidak tersedia: {e}")
                 st.line_chart(pd.DataFrame({"Close": closes}, index=dates))

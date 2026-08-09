@@ -62,12 +62,15 @@ def fetch_yfinance(ticker: str, interval: str = "1D", limit: int = 300) -> Optio
     if len(df) < 20:
         return {"error": f"Data terlalu sedikit ({len(df)} bar)"}
 
+    # bar intraday butuh jam, kalau tidak beberapa bar menumpuk di tanggal yang sama
+    fmt = "%Y-%m-%d %H:%M" if yf_int.endswith(("h", "m")) else "%Y-%m-%d"
+
     return {
         "close": df["Close"].astype(float).tolist(),
         "high": df["High"].astype(float).tolist(),
         "low": df["Low"].astype(float).tolist(),
         "volume": df["Volume"].astype(float).tolist(),
-        "dates": [d.strftime("%Y-%m-%d") for d in df.index],
+        "dates": [d.strftime(fmt) for d in df.index],
         "source": "yfinance",
     }
 
@@ -117,13 +120,16 @@ def fetch_okx(inst_id: str, interval: str = "1D", limit: int = 300) -> Optional[
     rows = rows[:limit]
     rows.reverse()                        # OKX kirim terbaru dulu → balik jadi kronologis
 
+    # bar intraday (4H, 1H, …) butuh jam supaya tidak menumpuk di tanggal yang sama
+    intraday = bar.upper().endswith(("H", "M")) and not bar.upper().endswith("MON")
+
     try:
         out = {
             "close": [float(x[4]) for x in rows],
             "high": [float(x[2]) for x in rows],
             "low": [float(x[3]) for x in rows],
             "volume": [float(x[5]) for x in rows],
-            "dates": [_ms_to_date(x[0]) for x in rows],
+            "dates": [_ms_to_date(x[0], intraday) for x in rows],
             "source": "okx",
         }
     except (ValueError, IndexError) as e:
@@ -134,9 +140,10 @@ def fetch_okx(inst_id: str, interval: str = "1D", limit: int = 300) -> Optional[
     return out
 
 
-def _ms_to_date(ms: str) -> str:
+def _ms_to_date(ms: str, intraday: bool = False) -> str:
     from datetime import datetime, timezone
-    return datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+    fmt = "%Y-%m-%d %H:%M" if intraday else "%Y-%m-%d"
+    return datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc).strftime(fmt)
 
 
 # ─────────────────────────────────────────────────────────────
