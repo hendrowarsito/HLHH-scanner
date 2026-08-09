@@ -44,8 +44,13 @@ streamlit run app.py
 | **Ticker** | ✅ | Saham IDX: `BBCA.JK` (**wajib sufiks .JK**) · Saham US: `NVDA` · Crypto: `BTC-USDT-SWAP` |
 | **Source** | ✅ | `yfinance` atau `okx` (ada dropdown) |
 | Nama | — | Label bebas |
+| Kategori | — | `Saham Indo` · `Saham US` · `Crypto`. Kosongkan → ditebak otomatis |
 | Aktif | — | `TRUE`/`FALSE` — matikan baris tanpa menghapusnya |
 | Catatan | — | Tidak dibaca aplikasi |
+
+**Kategori** dipakai untuk memfilter instrumen sebelum scan (multiselect di sidebar) dan
+tampil sebagai kolom di tabel hasil. Kalau selnya kosong, kategori ditebak:
+`.JK` → Saham Indo · source `okx` / kode `-USDT-SWAP` → Crypto · sisanya → Saham US.
 
 Dua cara memakai:
 - **Edit `tickers.xlsx` di repo** → jadi daftar bawaan, ikut ter-deploy
@@ -97,8 +102,12 @@ Kalau kamu mau aturan paling murni (sekali patah = buang), centang **"Hanya stru
 
 ## 📊 Membaca hasil
 
+Hasil dibagi 4 tampilan: **Lolos · Semua · Detail · Error**.
+Di tampilan **Semua**, klik satu baris → chart instrumen itu langsung terbuka di **Detail**.
+
 | Kolom | Arti |
 |---|---|
+| **Kategori** | Saham Indo 🇮🇩 · Saham US 🇺🇸 · Crypto 🪙 |
 | **Grade** | A+ ≥85 · A ≥70 · B ≥55 · C ≥40 · D <40 |
 | **Invalidasi (HL)** | HL terkonfirmasi terakhir = **level struktur patah**. Bisa dipakai sebagai anchor SL struktural |
 | **Jarak ke inval %** | Seberapa jauh harga dari level itu. Negatif = struktur sudah patah |

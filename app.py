@@ -22,12 +22,42 @@ GRADE_ORDER = {"A+": 0, "A": 1, "B": 2, "C": 3, "D": 4, "-": 5}
 GRADE_COLOR = {"A+": "#0b8043", "A": "#34a853", "B": "#f9ab00",
                "C": "#e8710a", "D": "#c5221f", "-": "#80868b"}
 
+# Kategori instrumen — dipakai untuk filter & pengelompokan hasil
+KAT_ID, KAT_US, KAT_CRYPTO = "Saham Indo", "Saham US", "Crypto"
+KATEGORI = [KAT_ID, KAT_US, KAT_CRYPTO]
+KATEGORI_ICON = {KAT_ID: "🇮🇩", KAT_US: "🇺🇸", KAT_CRYPTO: "🪙"}
+
 DEFAULT_TICKERS = pd.DataFrame({
-    "Ticker": ["BBCA.JK", "TLKM.JK", "BTC-USDT-SWAP", "ETH-USDT-SWAP"],
-    "Source": ["yfinance", "yfinance", "okx", "okx"],
-    "Nama": ["Bank Central Asia", "Telkom Indonesia", "Bitcoin Perp", "Ethereum Perp"],
-    "Aktif": [True, True, True, True],
+    "Ticker": ["BBCA.JK", "TLKM.JK", "NVDA", "BTC-USDT-SWAP", "ETH-USDT-SWAP"],
+    "Source": ["yfinance", "yfinance", "yfinance", "okx", "okx"],
+    "Nama": ["Bank Central Asia", "Telkom Indonesia", "NVIDIA",
+             "Bitcoin Perp", "Ethereum Perp"],
+    "Kategori": [KAT_ID, KAT_ID, KAT_US, KAT_CRYPTO, KAT_CRYPTO],
+    "Aktif": [True, True, True, True, True],
 })
+
+
+def infer_kategori(ticker: str, source: str, raw=None) -> str:
+    """
+    Tentukan kategori instrumen. Kolom `Kategori` di xlsx dipakai kalau ada
+    (ejaan bebas), kalau kosong ditebak dari Source + pola kode ticker.
+    """
+    s = str(raw or "").strip().lower()
+    if s and s not in ("nan", "none", "-"):
+        if any(k in s for k in ("crypto", "kripto", "coin", "perp")):
+            return KAT_CRYPTO
+        if any(k in s for k in ("indo", "idx", "idn", "jk")):
+            return KAT_ID
+        if any(k in s for k in ("us", "amerika", "nasdaq", "nyse")):
+            return KAT_US
+
+    src = str(source or "").strip().lower()
+    tk = str(ticker or "").strip().upper()
+    if src in ("okx", "crypto") or tk.endswith("-SWAP") or "-USDT" in tk:
+        return KAT_CRYPTO
+    if tk.endswith(".JK"):
+        return KAT_ID
+    return KAT_US
 
 
 # ─────────────────────────────────────────────────────────────
@@ -80,9 +110,28 @@ with st.sidebar:
         tickers_df["Nama"] = ""
     if "Aktif" not in tickers_df.columns:
         tickers_df["Aktif"] = True
+    if "Kategori" not in tickers_df.columns:
+        tickers_df["Kategori"] = None
 
     tickers_df = tickers_df[tickers_df["Aktif"].fillna(True).astype(bool)]
     tickers_df = tickers_df.dropna(subset=["Ticker"])
+
+    # kategori: pakai isian file kalau ada, sisanya ditebak dari Source/Ticker
+    tickers_df["Kategori"] = [
+        infer_kategori(r["Ticker"], r["Source"], r.get("Kategori"))
+        for _, r in tickers_df.iterrows()
+    ]
+
+    counts = tickers_df["Kategori"].value_counts()
+    pilih_kat = st.multiselect(
+        "Kategori",
+        KATEGORI,
+        default=[k for k in KATEGORI if counts.get(k, 0) > 0] or KATEGORI,
+        format_func=lambda k: f"{KATEGORI_ICON[k]} {k} ({counts.get(k, 0)})",
+        help="Kolom Kategori di xlsx dipakai kalau ada. Kalau kosong: "
+             "`.JK` → Saham Indo, source `okx` → Crypto, sisanya → Saham US.")
+    tickers_df = tickers_df[tickers_df["Kategori"].isin(pilih_kat)]
+
     st.metric("Instrumen aktif", len(tickers_df))
 
     # unduh template
@@ -154,6 +203,7 @@ if run:
         tk = str(row["Ticker"]).strip()
         src = str(row["Source"]).strip()
         nama = str(row.get("Nama", "") or "")
+        kat = str(row.get("Kategori") or infer_kategori(tk, src))
         prog.progress(i / total, text=f"[{i}/{total}] {tk}")
 
         try:
@@ -188,6 +238,7 @@ if run:
         rows.append({
             "Ticker": tk,
             "Nama": nama,
+            "Kategori": kat,
             "Source": data["source"],
             "Harga": round(last, 6),
             "Grade": r.grade,
@@ -235,6 +286,7 @@ if rows is None:
 | **Ticker** | ✅ | Saham IDX pakai sufiks `.JK` (contoh `BBCA.JK`). Crypto OKX pakai `BTC-USDT-SWAP` |
 | **Source** | ✅ | `yfinance` atau `okx` |
 | Nama | — | Label bebas |
+| Kategori | — | `Saham Indo`, `Saham US`, atau `Crypto`. Kalau kosong ditebak otomatis |
 | Aktif | — | `TRUE` / `FALSE` untuk menyalakan/mematikan baris |
         """)
     st.stop()
@@ -255,18 +307,40 @@ else:
     c2.metric("Lolos", len(passed))
     c3.metric("Grade A/A+", int((passed["Grade"].isin(["A", "A+"])).sum()) if len(passed) else 0)
     c4.metric("Gagal ambil data", len(errors))
+
+    if len(passed):
+        per_kat = passed["Kategori"].value_counts()
+        st.caption("Lolos per kategori: " + " · ".join(
+            f"{KATEGORI_ICON[k]} {k} **{int(per_kat.get(k, 0))}**" for k in KATEGORI))
     st.caption(f"Scan: {st.session_state.get('scan_time','-')} · "
                f"params: {st.session_state.get('params',{})}")
 
-    tab1, tab2, tab3, tab4 = st.tabs(["✅ Lolos", "📋 Semua", "📊 Detail", "⚠️ Error"])
+    # Navigasi (bukan st.tabs) supaya klik baris di "Semua" bisa memindahkan
+    # tampilan ke "Detail" secara programatis.
+    SECTIONS = ["✅ Lolos", "📋 Semua", "📊 Detail", "⚠️ Error"]
+    # perpindahan section harus diproses SEBELUM widget nav dibuat —
+    # session_state milik widget tidak boleh diubah setelah widget dirender
+    goto = st.session_state.pop("_goto", None)
+    if goto in SECTIONS:
+        st.session_state["section"] = goto
+    if st.session_state.get("section") not in SECTIONS:
+        st.session_state["section"] = SECTIONS[0]
+    if hasattr(st, "segmented_control"):
+        st.segmented_control("Tampilan", SECTIONS, key="section",
+                             label_visibility="collapsed")
+    else:  # streamlit lama
+        st.radio("Tampilan", SECTIONS, key="section", horizontal=True,
+                 label_visibility="collapsed")
+    section = st.session_state["section"] or SECTIONS[0]
 
-    with tab1:
+    if section == SECTIONS[0]:
         if passed.empty:
             st.info("Tidak ada yang memenuhi syarat. Coba turunkan k×ATR atau perpanjang lookback.")
         else:
-            show = passed[["Ticker", "Nama", "Grade", "Skor", "HH", "HL", "LH warn",
-                           "Patah", "Harga", "Invalidasi (HL)", "Jarak ke inval %",
-                           "Tren %/swing", "Threshold %", "Swing tentatif"]]
+            show = passed[["Ticker", "Nama", "Kategori", "Grade", "Skor", "HH", "HL",
+                           "LH warn", "Patah", "Harga", "Invalidasi (HL)",
+                           "Jarak ke inval %", "Tren %/swing", "Threshold %",
+                           "Swing tentatif"]]
             st.dataframe(
                 show.style.apply(
                     lambda s: [f"color:{GRADE_COLOR.get(v,'#000')};font-weight:700"
@@ -281,17 +355,47 @@ else:
             st.caption("💡 Simpan CSV setiap scan. Tanpa log bertanggal, kamu tidak akan "
                        "bisa menguji apakah screener ini benar-benar menambah edge.")
 
-    with tab2:
-        st.dataframe(df, use_container_width=True, hide_index=True, height=460)
+    elif section == SECTIONS[1]:
+        st.caption("👆 Klik satu baris untuk membuka chart instrumen itu di **📊 Detail**.")
+        event = st.dataframe(
+            df, use_container_width=True, hide_index=True, height=460,
+            on_select="rerun", selection_mode="single-row", key="tabel_semua")
 
-    with tab3:
+        try:
+            picked = list(event.selection.rows)
+        except Exception:
+            picked = []
+        if not picked:
+            # baris dilepas → izinkan klik ulang pada baris yang sama
+            st.session_state.pop("_klik_terproses", None)
+        else:
+            tk = str(df.iloc[picked[0]]["Ticker"])
+            if st.session_state.get("_klik_terproses") != tk:
+                st.session_state["_klik_terproses"] = tk
+                if tk in store:
+                    st.session_state["detail_ticker"] = tk
+                    st.session_state["_goto"] = SECTIONS[2]
+                    st.rerun()
+                else:
+                    st.warning(f"{tk} tidak punya data chart.")
+
+    elif section == SECTIONS[2]:
         opts = list(store.keys())
         if not opts:
             st.info("Belum ada data.")
         else:
-            sel = st.selectbox("Pilih instrumen", opts)
+            # dipilih lewat klik baris di tab "Semua", atau langsung dari dropdown
+            want = st.session_state.pop("detail_ticker", None)
+            if want in opts:
+                st.session_state["detail_ticker_sel"] = want
+            if st.session_state.get("detail_ticker_sel") not in opts:
+                st.session_state["detail_ticker_sel"] = opts[0]
+
+            sel = st.selectbox("Pilih instrumen", opts, key="detail_ticker_sel")
             entry = store[sel]
             d, r = entry["data"], entry["result"]
+            kat_row = df.loc[df["Ticker"] == sel, "Kategori"]
+            kat_sel = str(kat_row.iloc[0]) if len(kat_row) else ""
             lb = st.session_state["params"]["lookback"]
             closes = d["close"][-lb:]
             highs = d["high"][-lb:]
@@ -374,7 +478,8 @@ else:
                     height=460,
                     margin=dict(l=0, r=8, t=52, b=78),
                     title=dict(
-                        text=f"<b>{sel}</b>  ·  {st.session_state['params']['interval']}"
+                        text=f"<b>{sel}</b>  ·  {KATEGORI_ICON.get(kat_sel, '')} {kat_sel}"
+                             f"  ·  {st.session_state['params']['interval']}"
                              f"  ·  grade {r.grade}",
                         x=0, xanchor="left", font=dict(size=15)),
                     hovermode="x unified",
@@ -407,7 +512,7 @@ else:
                 for n in r.notes:
                     st.warning(n)
 
-    with tab4:
+    else:
         if errors:
             st.dataframe(pd.DataFrame(errors), use_container_width=True, hide_index=True)
             st.caption("Penyebab umum: simbol salah (saham IDX butuh `.JK`), "
